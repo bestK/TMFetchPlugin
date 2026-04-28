@@ -1,0 +1,3 @@
+LIBRARY TMFetchPlugin
+EXPORTS
+    TMPluginGetInstance

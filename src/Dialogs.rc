@@ -1,0 +1,64 @@
+// All visible texts are set at runtime via SetWindowTextW to avoid .rc
+// codepage issues across MSVC rc.exe and MinGW windres.
+#include <windows.h>
+#include <commctrl.h>
+#include "resource.h"
+
+LANGUAGE 0, 0
+
+IDD_MAIN_OPTIONS DIALOGEX 0, 0, 360, 230
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION ""
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT           "",    IDC_LBL_INTERVAL,   8,   8,  90, 10
+    EDITTEXT               IDC_INTERVAL,      100,   6,  60, 12, ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "",    IDC_LBL_ITEMS,       8,  24,  90, 10
+    CONTROL         "",    IDC_LIST_ITEMS, "SysListView32",
+                           LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_TABSTOP | WS_BORDER,
+                                              8,  36, 286, 160
+    PUSHBUTTON      "",    IDC_ADD,           300,  36,  52, 14
+    PUSHBUTTON      "",    IDC_EDIT,          300,  54,  52, 14
+    PUSHBUTTON      "",    IDC_DELETE,        300,  72,  52, 14
+    PUSHBUTTON      "",    IDC_UP,            300,  94,  52, 14
+    PUSHBUTTON      "",    IDC_DOWN,          300, 112,  52, 14
+    LTEXT           "",    IDC_HINT,            8, 200, 286, 10
+    DEFPUSHBUTTON   "",    IDOK,              244, 210,  52, 14
+    PUSHBUTTON      "",    IDCANCEL,          300, 210,  52, 14
+END
+
+IDD_EDIT_ITEM DIALOGEX 0, 0, 380, 300
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION ""
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT       "", IDC_LBL_NAME,         8,  10, 50, 10
+    EDITTEXT        IDC_NAME,            60,   8, 130, 12, ES_AUTOHSCROLL
+    LTEXT       "", IDC_LBL_ID,         200,  10, 50, 10
+    EDITTEXT        IDC_ID,             252,   8, 120, 12, ES_AUTOHSCROLL
+
+    LTEXT       "", IDC_LBL_URL,          8,  28, 50, 10
+    EDITTEXT        IDC_URL,             60,  26, 312, 12, ES_AUTOHSCROLL
+
+    LTEXT       "", IDC_LBL_METHOD,       8,  46, 50, 10
+    COMBOBOX        IDC_METHOD,          60,  44,  60, 60, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT       "", IDC_LBL_INTERVAL_IT,130,  46, 80, 10
+    EDITTEXT        IDC_INTERVAL_ITEM,  214,  44,  50, 12, ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT       "", IDC_LBL_TIMEOUT,    270,  46, 50, 10
+    EDITTEXT        IDC_TIMEOUT,        322,  44,  50, 12, ES_AUTOHSCROLL | ES_NUMBER
+
+    LTEXT       "", IDC_LBL_HEADERS,      8,  64, 350, 10
+    EDITTEXT        IDC_HEADERS,          8,  76, 364, 32, ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL | ES_WANTRETURN
+
+    LTEXT       "", IDC_LBL_BODY,         8, 112, 60, 10
+    EDITTEXT        IDC_BODY,             8, 124, 364, 32, ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL | ES_WANTRETURN
+
+    LTEXT       "", IDC_LBL_JSONPATH,     8, 160, 364, 10
+    EDITTEXT        IDC_JSONPATH,         8, 172, 364, 50, ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL | ES_WANTRETURN
+
+    PUSHBUTTON  "", IDC_TEST,             8, 226,  60, 16
+    EDITTEXT        IDC_TEST_RESULT,     76, 226, 296, 50, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL
+
+    DEFPUSHBUTTON "", IDOK,             260, 280,  52, 14
+    PUSHBUTTON   "", IDCANCEL,          320, 280,  52, 14
+END
