@@ -1,0 +1,55 @@
+name: Release Build
+
+# Trigger on either:
+#   - a published GitHub Release (assets are auto-uploaded to that release)
+#   - manual run via the Actions UI (artifacts only, no release upload)
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed by softprops/action-gh-release to upload assets
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: Win32
+            label: x86
+          - arch: x64
+            label: x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure (MSVC ${{ matrix.arch }})
+        run: cmake -B build -A ${{ matrix.arch }}
+
+      - name: Build (Release)
+        run: cmake --build build --config Release -j
+
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item build\Release\TMFetchPlugin.dll "dist\TMFetchPlugin-${{ matrix.label }}.dll"
+          Get-Item "dist\TMFetchPlugin-${{ matrix.label }}.dll" | Format-List Name, Length
+
+      - name: Upload as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TMFetchPlugin-${{ matrix.label }}
+          path: dist/TMFetchPlugin-${{ matrix.label }}.dll
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/TMFetchPlugin-${{ matrix.label }}.dll
