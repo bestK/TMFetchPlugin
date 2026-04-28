@@ -1,77 +1,85 @@
 # TMFetchPlugin
 
-A generic HTTP fetcher plugin for [TrafficMonitor](https://github.com/zhongyang219/TrafficMonitor).
-It periodically issues HTTP(S) requests, extracts a target field from the JSON
-response using a **JSONPath**-style expression, and displays the value with a
-**custom label** in the TrafficMonitor main window or taskbar item area.
+[![Release](https://img.shields.io/github/v/release/bestK/TMFetchPlugin)](https://github.com/bestK/TMFetchPlugin/releases/latest)
+[![Build](https://github.com/bestK/TMFetchPlugin/actions/workflows/release.yml/badge.svg)](https://github.com/bestK/TMFetchPlugin/actions/workflows/release.yml)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
 
-Multiple display items are supported via INI configuration, each with its own
-URL / headers / body / JSONPath / label / refresh interval.
+A generic HTTP / JSON fetcher plugin for [TrafficMonitor](https://github.com/zhongyang219/TrafficMonitor).
+Point it at any REST API, write a one-line **display template** mixing literal
+text with `$.path.x` references, and the resolved value is rendered onto your
+TrafficMonitor taskbar / main window on a configurable schedule.
+
+```
+电量:$.battery.level%  状态:$.status     ->     电量:76%  状态:OK
+```
+
+Multiple items are supported, each with its own URL / headers / body / template /
+interval / timeout.
 
 ## Features
 
--   HTTP / HTTPS via WinHTTP (no external dependencies required at runtime)
--   Per-item method (`GET`, `POST`, ...), headers, request body, timeout
--   JSONPath subset for extracting values:
-    -   `$` root, `.field`, `['field']`, `["field"]`
-    -   `[N]` array index (negative supported, e.g. `[-1]` = last)
-    -   `..field` recursive descent (first match)
--   Custom display label, optional **prefix** and **suffix** (units, currency, ...)
--   Custom sample text (controls width on the taskbar)
--   Per-item refresh interval, runs on a background worker thread (does **not**
-    block TrafficMonitor's UI thread)
--   Plain-text INI config; "Options" button opens it in the system editor
+-   **Free-form display template.** Just write text and drop `$.path.x` references
+    inline. The scanner finds them greedily; everything else is literal. `$$`
+    emits a literal `$`. `${...}` braces form is also accepted.
+-   **JSONPath subset:** `.key`, `['key']`, `[N]` (negatives ok, e.g. `[-1]`), and
+    `..key` recursive descent.
+-   **Per-item refresh** on a background worker thread. The TrafficMonitor UI
+    thread is never blocked, even on slow / failing endpoints.
+-   **In-app options dialog** with a live **Test** button: shows status, raw
+    response, and the rendered template before you save.
+-   **HTTP / HTTPS via WinHTTP** — no runtime dependencies, no MSVC redist.
+-   **Per-item method, headers, body, timeout.**
+-   **Hot-reload:** edits to existing items take effect immediately.
 
-## ⚠️ Architecture matters
+## Install
 
-TrafficMonitor 官方发行版是 **32 位 (x86)**。
-DLL 必须与宿主程序位数一致，否则加载时会报 `不是有效的 Win32 程序`。
+Grab the matching DLL from the [latest release](https://github.com/bestK/TMFetchPlugin/releases/latest):
 
-快速检查 `TrafficMonitor.exe` 位数（PowerShell）：
+| TrafficMonitor.exe                | Use this DLL            |
+| --------------------------------- | ----------------------- |
+| **32-bit / x86** (official build) | `TMFetchPlugin-x86.dll` |
+| **64-bit / x64**                  | `TMFetchPlugin-x64.dll` |
 
-```pwsh
-$b = [IO.File]::ReadAllBytes("path\to\TrafficMonitor.exe")
-$o = [BitConverter]::ToInt32($b, 60)
-switch ([BitConverter]::ToUInt16($b, $o + 4)) {
-    0x14c { "x86 (Win32)" }; 0x8664 { "x64" }
-}
-```
+Drop the file into TrafficMonitor's `plugins/` directory and restart
+TrafficMonitor. Then enable the items you want via
+_选项 → 插件管理 → TMFetchPlugin → 配置_.
 
-CMake 配置时如果生成的不是 32 位，会输出警告。
+> Bitness mismatch fails to load with `不是有效的 Win32 程序`. Quick check of
+> your TrafficMonitor.exe:
+>
+> ```pwsh
+> $b = [IO.File]::ReadAllBytes("path\to\TrafficMonitor.exe")
+> $o = [BitConverter]::ToInt32($b, 60)
+> switch ([BitConverter]::ToUInt16($b, $o + 4)) {
+>     0x14c { "x86 (Win32)" }; 0x8664 { "x64" }
+> }
+> ```
 
-## Building
+## Build from source
 
-Requires Windows + a C++17 compiler (MSVC / Visual Studio recommended).
-TrafficMonitor official builds ship as **x86 (Win32)**, so build the plugin in
-`Win32` to match unless you run an x64 build of TrafficMonitor.
+Windows + C++17 compiler (MSVC recommended; MinGW also works).
 
 ```pwsh
 # x86 (matches official TrafficMonitor.exe)
 cmake -A Win32 -B build
 cmake --build build --config Release
 
-# or x64
+# x64
 cmake -A x64 -B build64
 cmake --build build64 --config Release
 ```
 
-The CMake script auto-downloads the single-header
-[`nlohmann/json`](https://github.com/nlohmann/json) (v3.11.3) on first configure.
+First configure auto-downloads the single-header
+[`nlohmann/json`](https://github.com/nlohmann/json) v3.11.3.
+Output DLL: `build/Release/TMFetchPlugin.dll`.
 
-The output DLL is `build/Release/TMFetchPlugin.dll`.
+## Configure
 
-## Installation
+The in-app options dialog is the recommended path: every field is editable, and
+the **Test** button shows you the rendered output before you save.
 
-1. Locate TrafficMonitor's plugin folder (typically `<TrafficMonitor>/plugins/`).
-2. Copy `TMFetchPlugin.dll` into that folder.
-3. Restart TrafficMonitor.
-4. The plugin auto-creates a sample `TMFetchPlugin.ini` in the plugin config
-   directory provided by TrafficMonitor (visible via _Plugin Management →
-   Options_). Edit it and click _Options_ again to reload.
-
-## Configuration
-
-Config file: `TMFetchPlugin.ini` in TrafficMonitor's plugin config directory.
+Under the hood, settings live in `TMFetchPlugin.ini` inside TrafficMonitor's
+plugin config directory. Hand-editing is also fine:
 
 ```ini
 [Plugin]
@@ -80,41 +88,53 @@ ItemCount=2           ; number of [ItemN] sections
 
 [Item0]
 Name=BTC Price        ; shown in TrafficMonitor menus
-Id=tmfetch_btc        ; unique id (letters+digits)
-Label=BTC:            ; custom label drawn next to the value
+Id=tmfetch_btc        ; unique id (letters / digits / underscore)
 URL=https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd
 Method=GET
 Headers=Accept: application/json
-; or use Header1=, Header2=, ... up to Header16
-JsonPath=$.bitcoin.usd
-Prefix=$
-Suffix=
-Sample=$99999.99      ; sample text used to compute display width
-Placeholder=--        ; shown while loading or on error
-Interval=30000        ; per-item override (ms); 0 = use [Plugin] Interval
-Timeout=8000          ; request timeout (ms)
-Body=                 ; optional request body (UTF-8) for POST/PUT
+; or split: Header1=Accept: application/json   Header2=User-Agent: TM
+JsonPath=BTC: $$$.bitcoin.usd     ; literal "BTC: $" + $.bitcoin.usd
+Interval=30000                    ; per-item override (ms); 0 = use [Plugin] Interval
+Timeout=8000                      ; request timeout (ms)
+Body=                             ; optional request body (UTF-8) for POST/PUT
 ```
 
-A complete sample is in [`examples/TMFetchPlugin.ini`](examples/TMFetchPlugin.ini).
+Full example with multiple items: [`examples/TMFetchPlugin.ini`](examples/TMFetchPlugin.ini).
 
-### JSONPath examples
+### Display template syntax
 
-| Path                  | Meaning                                        |
-| --------------------- | ---------------------------------------------- |
-| `$.bitcoin.usd`       | object key chain                               |
-| `$['bitcoin']['usd']` | bracket form (use for keys with dots / spaces) |
-| `$.data[0].price`     | first array element, then key                  |
-| `$.data[-1].price`    | last array element                             |
-| `$..stargazers_count` | recursive search; first match wins             |
+The `JsonPath` field is the **only** value-formatting field. Write whatever
+text you want and inline `$.path.x` references; they're substituted with the
+value from the JSON response.
 
-If `JsonPath` is empty, the trimmed raw response body is used as the value.
+| Template                               | Sample output       |
+| -------------------------------------- | ------------------- |
+| `BTC: $$$.bitcoin.usd`                 | `BTC: $65432.5`     |
+| `电量:$.battery.level%  状态:$.status` | `电量:76%  状态:OK` |
+| `★ $.stargazers_count`                 | `★ 4321`            |
+| `${$.bitcoin.usd}` _(legacy braces)_   | `65432.5`           |
+| _(empty)_                              | raw response body   |
 
-## Notes / Caveats
+Rules:
 
--   The plugin uses Windows' system proxy (WinHTTP automatic proxy detection).
--   The "Options" button just opens `TMFetchPlugin.ini` in the user's default
-    text editor; the plugin reloads its config immediately and again next time
-    Options is invoked. Save and click Options once more to apply changes.
--   All network I/O happens on a dedicated worker thread; TrafficMonitor's UI
-    is never blocked.
+-   `$.path.foo` is matched greedily; it stops at the first character that can’t
+    be part of a path (whitespace, punctuation other than `.`/`[`).
+-   Inside brackets you can quote: `$.users[0]['display.name']`.
+-   `..key` does a recursive descent and returns the first match.
+-   `$$` emits a literal `$`. A bare `$` followed by something that isn't `.`,
+    `[`, or `{` is treated as a literal too (so `$5 dollars` works fine).
+-   A path that doesn't resolve renders as `--`.
+
+## Notes
+
+-   WinHTTP uses Windows' system proxy automatically.
+-   All network I/O happens on a dedicated worker thread — TrafficMonitor's UI
+    thread is never blocked.
+-   Items survive config reloads in-place: removing an item from the dialog
+    hides it but doesn't tear down the live `IPluginItem*` (TrafficMonitor caches
+    those pointers, so destroying them at runtime would crash the host).
+    Reordering / removing items takes effect cleanly after a restart.
+
+## License
+
+MIT.
