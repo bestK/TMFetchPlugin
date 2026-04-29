@@ -17,15 +17,15 @@ using nlohmann::json;
 
 namespace {
 
-constexpr const wchar_t* kPluginName        = L"HTTP Fetch";
+constexpr const wchar_t* kPluginName        = L"TMFetchPlugin";
 constexpr const wchar_t* kPluginDescription =
-    L"Generic HTTP/JSON plugin for TrafficMonitor.\r\n"
-    L"Fetches a URL on a timer, extracts a field via JSONPath and shows it "
-    L"with a custom label. See TMFetchPlugin.ini in the plugin's config dir.";
-constexpr const wchar_t* kPluginAuthor    = L"TMFetchPlugin";
+    L"通用 HTTP/JSON 数据抓取插件。\r\n"
+    L"按计时器请求任意 URL，用 JSONPath 自由模板（aaa:$.x.y）渲染结果，"
+    L"支持多行 \\n 自绘。配置见插件目录下的 TMFetchPlugin.ini。";
+constexpr const wchar_t* kPluginAuthor    = L"bestK";
 constexpr const wchar_t* kPluginCopyright = L"MIT License";
-constexpr const wchar_t* kPluginVersion   = L"1.0.0";
-constexpr const wchar_t* kPluginUrl       = L"https://github.com/zhongyang219/TrafficMonitor";
+constexpr const wchar_t* kPluginVersion   = L"1.1.0";
+constexpr const wchar_t* kPluginUrl       = L"https://github.com/bestK/TMFetchPlugin";
 
 void RefreshOne(HttpFetchItem& item) {
     const ItemConfig c = item.ConfigCopy();
