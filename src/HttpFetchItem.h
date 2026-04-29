@@ -17,6 +17,13 @@ public:
     const wchar_t* GetItemValueText() const override;
     const wchar_t* GetItemValueSampleText() const override;
 
+    // Custom-draw path: enabled only when the rendered template contains a
+    // newline. For single-line items we return false and let TrafficMonitor
+    // do its default draw, which respects user-set fonts / colours / themes.
+    bool IsCustomDraw() const override;
+    void DrawItem(void* hDC, int x, int y, int w, int h, bool dark_mode) override;
+    int  GetItemWidthEx(void* hDC) const override;
+
     // Item-side helpers used by the plugin's worker thread.
     // ConfigCopy returns a snapshot under lock so the worker never reads a
     // string that's being mutated by a UI-thread UpdateConfig().
@@ -49,13 +56,13 @@ private:
 
     mutable std::mutex m_mtx;
     ItemConfig m_cfg;
-    // The first line of the rendered template becomes the TM "label"
-    // (drawn on top), the rest becomes the "value" (drawn below). Lets
-    // users get a 2-line item by writing "上行\n下行" in the template.
-    std::wstring m_sampleLabel;
-    std::wstring m_sampleValue;
-    std::wstring m_displayLabel;
-    std::wstring m_displayValue;
+    // Both fields keep newlines if the user's template has them. When
+    // present, IsCustomDraw() flips to true and DrawItem() renders one
+    // line per row. GetItemValueText() returns a flattened single-row
+    // view of m_displayValue so TM still has something sensible to cache
+    // / display in tooltips and menus.
+    std::wstring m_sampleValue;     // multi-line sample (placeholder=9999)
+    std::wstring m_displayValue;    // multi-line latest value
 
     std::atomic<bool> m_enabled{true};
     std::atomic<long long> m_lastRefreshMs{0};

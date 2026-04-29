@@ -2,15 +2,38 @@
 #include "JsonPath.h"
 #include "StringUtil.h"
 #include <nlohmann/json.hpp>
+#include <Windows.h>
+#include <vector>
 
 using namespace std::chrono;
 
 namespace {
-// TrafficMonitor renders each plugin item as a SINGLE row (its taskbar
-// 2-row layout pairs neighbouring items, it does NOT split one item into
-// label-on-top + value-on-bottom). So newlines in the template would just
-// be discarded by the host - we collapse them to spaces ourselves to keep
-// the output predictable. CRs are stripped.
+// Strip CRs (Windows edit controls produce CRLF; we want to work with LF only).
+std::wstring NormalizeNewlines(const std::wstring& s) {
+    std::wstring out;
+    out.reserve(s.size());
+    for (wchar_t c : s) {
+        if (c == L'\r') continue;
+        out.push_back(c);
+    }
+    return out;
+}
+
+// Split on LF. Empty input -> single empty line so callers don't have to
+// handle the empty-vector case.
+std::vector<std::wstring> SplitLines(const std::wstring& s) {
+    std::vector<std::wstring> out;
+    std::wstring line;
+    for (wchar_t c : s) {
+        if (c == L'\n') { out.push_back(line); line.clear(); }
+        else line.push_back(c);
+    }
+    out.push_back(line);
+    return out;
+}
+
+// Collapse newlines to a single space; used for the GetItemValueText
+// fallback path (tooltips, menus, accessibility).
 std::wstring FlattenToSingleLine(const std::wstring& s) {
     std::wstring out;
     out.reserve(s.size());
@@ -18,7 +41,7 @@ std::wstring FlattenToSingleLine(const std::wstring& s) {
     for (wchar_t c : s) {
         if (c == L'\r') continue;
         if (c == L'\n') c = L' ';
-        if (c == L' ' && prevSpace) continue;     // dedupe spaces
+        if (c == L' ' && prevSpace) continue;
         out.push_back(c);
         prevSpace = (c == L' ');
     }
@@ -28,15 +51,15 @@ std::wstring FlattenToSingleLine(const std::wstring& s) {
     return out.substr(leading);
 }
 
-// Derive a width-hint / placeholder string by rendering the template with
-// every "$.path" substituted by `placeholder`, then flattened to one row.
+// Render the template with every "$.path" substituted by `placeholder`,
+// keeping any newlines the user put in.
 std::wstring DeriveDisplay(const std::wstring& tpl, const std::string& placeholder) {
     if (tpl.empty()) return placeholder.empty() ? L"--"
                                                 : strutil::Utf8ToWide(placeholder);
     nlohmann::json empty = nlohmann::json::object();
     std::string rendered = jpath::RenderTemplate(empty, strutil::WideToUtf8(tpl), placeholder);
-    auto flat = FlattenToSingleLine(strutil::Utf8ToWide(rendered));
-    return flat.empty() ? L"--" : flat;
+    auto out = NormalizeNewlines(strutil::Utf8ToWide(rendered));
+    return out.empty() ? std::wstring(L"--") : out;
 }
 } // namespace
 
@@ -54,9 +77,7 @@ const wchar_t* SnapshotReturn(const std::wstring& src) {
 HttpFetchItem::HttpFetchItem(const ItemConfig& cfg)
     : m_id(cfg.id), m_name(cfg.name.empty() ? cfg.id : cfg.name), m_cfg(cfg)
 {
-    m_sampleLabel.clear();
     m_sampleValue  = DeriveDisplay(cfg.jsonpath, "9999");
-    m_displayLabel.clear();
     m_displayValue = DeriveDisplay(cfg.jsonpath, "--");
 }
 
@@ -74,12 +95,63 @@ const wchar_t* HttpFetchItem::GetItemLableText() const {
 
 const wchar_t* HttpFetchItem::GetItemValueText() const {
     std::lock_guard<std::mutex> lk(m_mtx);
-    return SnapshotReturn(m_displayValue);
+    // TM ignores this when IsCustomDraw() returns true, but it's still used
+    // for tooltips / menu strings, so flatten newlines for safety.
+    return SnapshotReturn(FlattenToSingleLine(m_displayValue));
 }
 
 const wchar_t* HttpFetchItem::GetItemValueSampleText() const {
     std::lock_guard<std::mutex> lk(m_mtx);
-    return SnapshotReturn(m_sampleValue);
+    return SnapshotReturn(FlattenToSingleLine(m_sampleValue));
+}
+
+bool HttpFetchItem::IsCustomDraw() const {
+    std::lock_guard<std::mutex> lk(m_mtx);
+    return m_displayValue.find(L'\n') != std::wstring::npos;
+}
+
+int HttpFetchItem::GetItemWidthEx(void* hDC) const {
+    HDC dc = reinterpret_cast<HDC>(hDC);
+    if (!dc) return 0;
+    std::wstring sample;
+    {
+        std::lock_guard<std::mutex> lk(m_mtx);
+        sample = m_sampleValue;
+    }
+    int max_w = 0;
+    for (auto& line : SplitLines(sample)) {
+        if (line.empty()) continue;
+        SIZE sz{};
+        GetTextExtentPoint32W(dc, line.c_str(), (int)line.size(), &sz);
+        if (sz.cx > max_w) max_w = sz.cx;
+    }
+    // A small horizontal padding (matches what TM's default draw leaves).
+    return max_w + 4;
+}
+
+void HttpFetchItem::DrawItem(void* hDC, int x, int y, int w, int h, bool dark_mode) {
+    HDC dc = reinterpret_cast<HDC>(hDC);
+    if (!dc) return;
+
+    std::wstring text;
+    {
+        std::lock_guard<std::mutex> lk(m_mtx);
+        text = m_displayValue;
+    }
+    auto lines = SplitLines(text);
+    if (lines.empty()) return;
+
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, dark_mode ? RGB(255, 255, 255) : RGB(0, 0, 0));
+
+    const int n = (int)lines.size();
+    const int line_h = h / n;
+    for (int i = 0; i < n; ++i) {
+        RECT r{ x, y + i * line_h, x + w,
+                (i == n - 1) ? (y + h) : (y + (i + 1) * line_h) };
+        DrawTextW(dc, lines[i].c_str(), (int)lines[i].size(), &r,
+                  DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+    }
 }
 
 ItemConfig HttpFetchItem::ConfigCopy() const {
@@ -107,10 +179,10 @@ void HttpFetchItem::MarkRefreshed(steady_clock::time_point now) {
 }
 
 void HttpFetchItem::SetValue(const std::wstring& v) {
-    auto flat = FlattenToSingleLine(v);
-    if (flat.empty()) flat = L"--";
+    auto norm = NormalizeNewlines(v);
+    if (norm.empty()) norm = L"--";
     std::lock_guard<std::mutex> lk(m_mtx);
-    m_displayValue = flat;
+    m_displayValue = norm;
 }
 
 void HttpFetchItem::SetError(const std::wstring& /*msg*/) {

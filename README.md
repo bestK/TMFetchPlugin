@@ -21,10 +21,10 @@ interval / timeout.
 -   **Free-form display template.** Just write text and drop `$.path.x` references
     inline. The scanner finds them greedily; everything else is literal. `$$`
     emits a literal `$`. `${...}` braces form is also accepted.
--   **Single-row output.** TrafficMonitor renders each plugin item as one row
-    (its taskbar 2-row layout pairs _neighbouring_ items, it doesn't split a
-    single item into label-on-top + value-on-bottom). Newlines / `\n` in the
-    template are collapsed to a space so the output stays readable.
+-   **Multi-line via `\n`.** Templates with newlines are rendered through the
+    plugin's own GDI draw path (`IsCustomDraw + DrawItem`), so each line gets
+    its own row inside the same item slot. Single-line templates fall through
+    to TrafficMonitor's default draw and inherit the user's TM theme/colours.
 -   **JSONPath subset:** `.key`, `['key']`, `[N]` (negatives ok, e.g. `[-1]`), and
     `..key` recursive descent.
 -   **Per-item refresh** on a background worker thread. The TrafficMonitor UI
@@ -111,14 +111,14 @@ The `JsonPath` field is the **only** value-formatting field. Write whatever
 text you want and inline `$.path.x` references; they're substituted with the
 value from the JSON response.
 
-| Template                                  | Rendered                                   |
-| ----------------------------------------- | ------------------------------------------ |
-| `BTC: $$$.bitcoin.usd`                    | `BTC: $65432.5`                            |
-| `电量:$.battery.level%  状态:$.status`    | `电量:76%  状态:OK`                        |
-| `电量:$.soc%\nF:$.front.psi R:$.rear.psi` | `电量:76% F:230 R:240` (newline collapsed) |
-| `★ $.stargazers_count`                    | `★ 4321`                                   |
-| `${$.bitcoin.usd}` _(legacy braces)_      | `65432.5`                                  |
-| _(empty)_                                 | raw response body                          |
+| Template                                  | Rendered                                            |
+| ----------------------------------------- | --------------------------------------------------- |
+| `BTC: $$$.bitcoin.usd`                    | `BTC: $65432.5`                                     |
+| `电量:$.battery.level%  状态:$.status`    | `电量:76%  状态:OK`                                 |
+| `电量:$.soc%\nF:$.front.psi R:$.rear.psi` | row 1 `电量:76%`, row 2 `F:230 R:240` (custom-draw) |
+| `★ $.stargazers_count`                    | `★ 4321`                                            |
+| `${$.bitcoin.usd}` _(legacy braces)_      | `65432.5`                                           |
+| _(empty)_                                 | raw response body                                   |
 
 Rules:
 
@@ -129,10 +129,9 @@ Rules:
 -   `$$` emits a literal `$`. A bare `$` followed by something that isn't `.`,
     `[`, or `{` is treated as a literal too (so `$5 dollars` works fine).
 -   A path that doesn't resolve renders as `--`.
--   `\n` (or a real Enter in the options dialog) is collapsed to a single
-    space in the rendered output. TrafficMonitor only renders one row per
-    plugin item, so true two-line layouts aren't possible without custom
-    drawing — feel free to open an issue if you need that.
+-   `\n` (or a real Enter in the options dialog) is preserved. When the
+    rendered output contains a newline, the plugin switches to custom-draw
+    mode and paints each line on its own row inside the item's slot.
 
 ## Notes
 
