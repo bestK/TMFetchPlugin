@@ -49,8 +49,13 @@ private:
 
     mutable std::mutex m_mtx;
     ItemConfig m_cfg;
-    std::wstring m_sample;
-    std::wstring m_displayValue; // computed: prefix + value + suffix
+    // The first line of the rendered template becomes the TM "label"
+    // (drawn on top), the rest becomes the "value" (drawn below). Lets
+    // users get a 2-line item by writing "上行\n下行" in the template.
+    std::wstring m_sampleLabel;
+    std::wstring m_sampleValue;
+    std::wstring m_displayLabel;
+    std::wstring m_displayValue;
 
     std::atomic<bool> m_enabled{true};
     std::atomic<long long> m_lastRefreshMs{0};

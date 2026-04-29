@@ -66,6 +66,26 @@ std::vector<std::wstring> TextToLines(const std::wstring& s) {
     return out;
 }
 
+// Convert bare LF / CR / CRLF to CRLF so a Windows multi-line edit control
+// renders line breaks (it ignores lone LF). Round-tripping through
+// GetDlgItemText then config::UnescapeMultiline normalises back to LF.
+std::wstring ToCrLf(const std::wstring& s) {
+    std::wstring out;
+    out.reserve(s.size() + 4);
+    for (size_t i = 0; i < s.size(); ++i) {
+        wchar_t c = s[i];
+        if (c == L'\r') {
+            out += L"\r\n";
+            if (i + 1 < s.size() && s[i+1] == L'\n') ++i; // skip LF of CRLF
+        } else if (c == L'\n') {
+            out += L"\r\n";
+        } else {
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
 std::wstring LinesToText(const std::vector<std::wstring>& lines) {
     std::wstring s;
     for (size_t i = 0; i < lines.size(); ++i) {
@@ -106,7 +126,7 @@ INT_PTR CALLBACK EditProc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp) {
         SetDlgText(hDlg, IDC_NAME,        it.name);
         SetDlgText(hDlg, IDC_ID,          it.id);
         SetDlgText(hDlg, IDC_URL,         it.url);
-        SetDlgText(hDlg, IDC_JSONPATH,    it.jsonpath);
+        SetDlgText(hDlg, IDC_JSONPATH,    ToCrLf(it.jsonpath));
         SetDlgInt (hDlg, IDC_INTERVAL_ITEM, it.interval_ms);
         SetDlgInt (hDlg, IDC_TIMEOUT,       it.timeout_ms > 0 ? it.timeout_ms : 8000);
 
@@ -126,7 +146,7 @@ INT_PTR CALLBACK EditProc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp) {
             it.name        = strutil::Trim(GetDlgText(hDlg, IDC_NAME));
             it.id          = strutil::Trim(GetDlgText(hDlg, IDC_ID));
             it.url         = strutil::Trim(GetDlgText(hDlg, IDC_URL));
-            it.jsonpath    = GetDlgText(hDlg, IDC_JSONPATH); // multi-line, keep as-is
+            it.jsonpath    = config::UnescapeMultiline(GetDlgText(hDlg, IDC_JSONPATH));
             it.method      = strutil::Trim(GetDlgText(hDlg, IDC_METHOD));
             if (it.method.empty()) it.method = L"GET";
             it.interval_ms = GetDlgInt(hDlg, IDC_INTERVAL_ITEM, 0);
@@ -150,7 +170,7 @@ INT_PTR CALLBACK EditProc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp) {
             if (tmp.method.empty()) tmp.method = L"GET";
             tmp.headers  = TextToLines(GetDlgText(hDlg, IDC_HEADERS));
             tmp.body     = strutil::WideToUtf8(GetDlgText(hDlg, IDC_BODY));
-            tmp.jsonpath = GetDlgText(hDlg, IDC_JSONPATH);
+            tmp.jsonpath = config::UnescapeMultiline(GetDlgText(hDlg, IDC_JSONPATH));
             tmp.timeout_ms = GetDlgInt(hDlg, IDC_TIMEOUT, 8000);
 
             if (tmp.url.empty()) {

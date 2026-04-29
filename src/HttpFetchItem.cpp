@@ -6,15 +6,45 @@
 using namespace std::chrono;
 
 namespace {
-// Derive a width-sample string from the user's template by substituting every
-// "$.path" reference with `placeholder`. Used both for the taskbar width hint
-// and for the initial display text (before any successful fetch).
+// Split the rendered template at its first newline. CR is treated as a
+// line-break too (and stripped); a CRLF counts as one. Output is the
+// "label" (text before the first break) and the "value" (everything
+// after, with internal CRs stripped but LFs preserved).
+struct LabelValue { std::wstring label, value; };
+LabelValue SplitFirstLine(const std::wstring& s) {
+    LabelValue lv;
+    size_t i = 0;
+    for (; i < s.size(); ++i) {
+        if (s[i] == L'\n' || s[i] == L'\r') break;
+        lv.label.push_back(s[i]);
+    }
+    if (i < s.size()) {
+        if (s[i] == L'\r' && i + 1 < s.size() && s[i+1] == L'\n') ++i;
+        ++i;
+        for (; i < s.size(); ++i) {
+            if (s[i] == L'\r') continue;
+            lv.value.push_back(s[i]);
+        }
+    }
+    return lv;
+}
+
+// Derive a sample string from the user's template by substituting every
+// "$.path" reference with `placeholder`. Returns the rendered (still
+// possibly multi-line) text; callers split into label/value.
 std::wstring DeriveSample(const std::wstring& tpl, const std::string& placeholder) {
     if (tpl.empty()) return placeholder.empty() ? L"--"
                                                 : strutil::Utf8ToWide(placeholder);
     nlohmann::json empty = nlohmann::json::object();
     std::string rendered = jpath::RenderTemplate(empty, strutil::WideToUtf8(tpl), placeholder);
     return strutil::Utf8ToWide(rendered);
+}
+
+// Apply DeriveSample then split. Helper used by ctor / UpdateConfig.
+LabelValue DeriveSampleLV(const std::wstring& tpl, const std::string& placeholder) {
+    auto lv = SplitFirstLine(DeriveSample(tpl, placeholder));
+    if (lv.label.empty() && lv.value.empty()) lv.value = L"--";
+    return lv;
 }
 } // namespace
 
@@ -32,20 +62,24 @@ const wchar_t* SnapshotReturn(const std::wstring& src) {
 HttpFetchItem::HttpFetchItem(const ItemConfig& cfg)
     : m_id(cfg.id), m_name(cfg.name.empty() ? cfg.id : cfg.name), m_cfg(cfg)
 {
-    m_sample       = DeriveSample(cfg.jsonpath, "9999");
-    m_displayValue = DeriveSample(cfg.jsonpath, "--");
-    if (m_displayValue.empty()) m_displayValue = L"--";
-    if (m_sample.empty())       m_sample = L"--";
+    auto sLV = DeriveSampleLV(cfg.jsonpath, "9999");
+    m_sampleLabel = sLV.label;
+    m_sampleValue = sLV.value;
+    auto dLV = DeriveSampleLV(cfg.jsonpath, "--");
+    m_displayLabel = dLV.label;
+    m_displayValue = dLV.value;
 }
 
 // m_id/m_name are immutable; safe to return c_str() without lock.
 const wchar_t* HttpFetchItem::GetItemName() const { return m_name.c_str(); }
 const wchar_t* HttpFetchItem::GetItemId()   const { return m_id.c_str(); }
 
-// Label is intentionally always empty: users compose any prefix text
-// directly inside the JsonPath template (e.g. "电量:${$.x.a}").
+// The first line of the rendered template is exposed as the "label" line
+// (drawn above the value in TrafficMonitor's two-row layout). If the
+// template has no newline the label is empty and only the value renders.
 const wchar_t* HttpFetchItem::GetItemLableText() const {
-    return L"";
+    std::lock_guard<std::mutex> lk(m_mtx);
+    return SnapshotReturn(m_displayLabel);
 }
 
 const wchar_t* HttpFetchItem::GetItemValueText() const {
@@ -55,7 +89,9 @@ const wchar_t* HttpFetchItem::GetItemValueText() const {
 
 const wchar_t* HttpFetchItem::GetItemValueSampleText() const {
     std::lock_guard<std::mutex> lk(m_mtx);
-    return SnapshotReturn(m_sample);
+    // Width hint should cover the wider of the two lines.
+    return SnapshotReturn(m_sampleValue.size() >= m_sampleLabel.size()
+                              ? m_sampleValue : m_sampleLabel);
 }
 
 ItemConfig HttpFetchItem::ConfigCopy() const {
@@ -83,12 +119,16 @@ void HttpFetchItem::MarkRefreshed(steady_clock::time_point now) {
 }
 
 void HttpFetchItem::SetValue(const std::wstring& v) {
+    auto lv = SplitFirstLine(v);
+    if (lv.label.empty() && lv.value.empty()) lv.value = L"--";
     std::lock_guard<std::mutex> lk(m_mtx);
-    m_displayValue = v.empty() ? L"--" : v;
+    m_displayLabel = lv.label;
+    m_displayValue = lv.value;
 }
 
 void HttpFetchItem::SetError(const std::wstring& /*msg*/) {
     std::lock_guard<std::mutex> lk(m_mtx);
+    m_displayLabel.clear();
     m_displayValue = L"--";
 }
 
@@ -99,8 +139,9 @@ void HttpFetchItem::UpdateConfig(const ItemConfig& cfg) {
     m_cfg = cfg;
     m_cfg.id   = m_id;        // keep stable id
     m_cfg.name = m_name;      // keep stable name
-    m_sample   = DeriveSample(cfg.jsonpath, "9999");
-    if (m_sample.empty()) m_sample = L"--";
+    auto sLV = DeriveSampleLV(cfg.jsonpath, "9999");
+    m_sampleLabel = sLV.label;
+    m_sampleValue = sLV.value;
     m_enabled.store(true, std::memory_order_relaxed);
     // Force a fresh refresh on next worker tick.
     m_lastRefreshMs.store(0);
@@ -109,6 +150,7 @@ void HttpFetchItem::UpdateConfig(const ItemConfig& cfg) {
 void HttpFetchItem::Disable() {
     {
         std::lock_guard<std::mutex> lk(m_mtx);
+        m_displayLabel.clear();
         m_displayValue = L"--";
     }
     m_enabled.store(false, std::memory_order_relaxed);

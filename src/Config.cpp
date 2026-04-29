@@ -37,6 +37,8 @@ std::wstring EscapeMultiline(const std::wstring& s) {
     return out;
 }
 
+} // namespace (anonymous)
+
 std::wstring UnescapeMultiline(const std::wstring& s) {
     std::wstring out;
     out.reserve(s.size());
@@ -54,6 +56,8 @@ std::wstring UnescapeMultiline(const std::wstring& s) {
     }
     return out;
 }
+
+namespace {
 
 // Headers may be supplied as either:
 //   Headers=Key1: V1 || Key2: V2     (separated by " || " or "\n" or ";;")

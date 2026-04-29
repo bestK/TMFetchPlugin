@@ -40,4 +40,10 @@ void WriteSample(const std::wstring& iniPath);
 // before being rewritten. Multiline fields (Body) are escaped (\n / \r / \\).
 void Save(const std::wstring& iniPath, const PluginConfig& cfg);
 
+// Convert backslash escapes in user-typed text to real characters:
+//   "\\n" -> LF, "\\r" -> CR, "\\\\" -> "\\".
+// Used so that "\\n" typed in the JsonPath / Body field becomes a real
+// newline in the rendered output (matters for the label/value split).
+std::wstring UnescapeMultiline(const std::wstring& s);
+
 } // namespace config

@@ -21,6 +21,9 @@ interval / timeout.
 -   **Free-form display template.** Just write text and drop `$.path.x` references
     inline. The scanner finds them greedily; everything else is literal. `$$`
     emits a literal `$`. `${...}` braces form is also accepted.
+-   **Two-line layout via `\n`.** A `\n` in the template (or a real newline) splits
+    the rendered output into the TrafficMonitor _label_ (top row) and _value_
+    (bottom row), matching the host's built-in two-row display.
 -   **JSONPath subset:** `.key`, `['key']`, `[N]` (negatives ok, e.g. `[-1]`), and
     `..key` recursive descent.
 -   **Per-item refresh** on a background worker thread. The TrafficMonitor UI
@@ -107,13 +110,14 @@ The `JsonPath` field is the **only** value-formatting field. Write whatever
 text you want and inline `$.path.x` references; they're substituted with the
 value from the JSON response.
 
-| Template                               | Sample output       |
-| -------------------------------------- | ------------------- |
-| `BTC: $$$.bitcoin.usd`                 | `BTC: $65432.5`     |
-| `电量:$.battery.level%  状态:$.status` | `电量:76%  状态:OK` |
-| `★ $.stargazers_count`                 | `★ 4321`            |
-| `${$.bitcoin.usd}` _(legacy braces)_   | `65432.5`           |
-| _(empty)_                              | raw response body   |
+| Template                                  | Rendered                              |
+| ----------------------------------------- | ------------------------------------- |
+| `BTC: $$$.bitcoin.usd`                    | `BTC: $65432.5`                       |
+| `电量:$.battery.level%  状态:$.status`    | `电量:76%  状态:OK`                   |
+| `电量:$.soc%\nF:$.front.psi R:$.rear.psi` | label `电量:76%`, value `F:230 R:240` |
+| `★ $.stargazers_count`                    | `★ 4321`                              |
+| `${$.bitcoin.usd}` _(legacy braces)_      | `65432.5`                             |
+| _(empty)_                                 | raw response body                     |
 
 Rules:
 
@@ -124,6 +128,10 @@ Rules:
 -   `$$` emits a literal `$`. A bare `$` followed by something that isn't `.`,
     `[`, or `{` is treated as a literal too (so `$5 dollars` works fine).
 -   A path that doesn't resolve renders as `--`.
+-   `\n` (or a real Enter in the options dialog) is treated as the line break
+    between the _label_ (top row, drawn by TrafficMonitor above the value) and
+    the _value_ (bottom row). Only the **first** newline is special; further
+    newlines just stay inside the value.
 
 ## Notes
 
